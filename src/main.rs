@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::config::init_envs;
 use crate::context::Context;
 use crate::health::service::health_check;
+use crate::queue::RabbitMQ;
 use crate::redis::Redis;
 
 mod address;
@@ -11,11 +12,22 @@ mod config;
 mod context;
 mod health;
 mod profile;
+mod queue;
 mod redis;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     init_envs(".env");
+
+    let channel = RabbitMQ::connect()
+        .await
+        .expect("Can't start RabbitMQ consumer");
+
+    actix_rt::spawn(async move {
+        if let Err(e) = RabbitMQ::consume(channel).await {
+            eprintln!("Error in consumer: {:?}", e);
+        }
+    });
 
     let redis_pool = Redis::get_pool();
     let context = Arc::new(Context { redis_pool });

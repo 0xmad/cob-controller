@@ -16,6 +16,6 @@ pub fn init_envs(file: &str) {
     dotenvy::from_filename(file).ok();
 }
 
-fn get_env(key: &str) -> String {
+pub fn get_env(key: &str) -> String {
     dotenvy::var(key).unwrap_or_else(|_| panic!("{} must be set", key))
 }

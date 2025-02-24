@@ -1,7 +1,4 @@
-use actix_web::{error, get, web, Error, HttpResponse};
-use std::{any::Any, sync::Arc};
-
-use crate::context::Context;
+use actix_web::{get, Error, HttpResponse};
 
 #[get("/health")]
 pub async fn health_check() -> Result<HttpResponse, Error> {

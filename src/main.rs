@@ -6,9 +6,11 @@ use crate::context::Context;
 use crate::health::service::health_check;
 use crate::redis::Redis;
 
+mod address;
 mod config;
 mod context;
 mod health;
+mod profile;
 mod redis;
 
 #[actix_web::main]
@@ -20,8 +22,14 @@ async fn main() -> std::io::Result<()> {
 
     println!("Service is running");
 
-    HttpServer::new(move || App::new().app_data(web::Data::new(context.clone())).service(health_check))
-        .bind(("127.0.0.1", 3000))?
-        .run()
-        .await
+    HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::new(context.clone()))
+            .service(health_check)
+            .service(profile::controller::create)
+            .service(profile::controller::kill)
+    })
+    .bind(("127.0.0.1", 3000))?
+    .run()
+    .await
 }

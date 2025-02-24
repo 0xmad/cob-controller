@@ -1,11 +1,28 @@
+use std::sync::Arc;
+
 use futures::stream::StreamExt;
 use lapin::{
     options::{BasicConsumeOptions, QueueDeclareOptions},
     types::FieldTable,
     Channel, Connection, ConnectionProperties,
 };
+use serde::Deserialize;
 
-use crate::config;
+use crate::{config, context::Context, profile};
+
+#[derive(Deserialize, Debug)]
+#[serde(tag = "type")]
+enum MessageType {
+    Create,
+    Kill,
+}
+
+#[derive(Deserialize, Debug)]
+struct Message {
+    #[serde(flatten)]
+    message_type: MessageType,
+    content: String,
+}
 
 pub struct RabbitMQ;
 
@@ -27,7 +44,7 @@ impl RabbitMQ {
         Ok(channel)
     }
 
-    pub async fn consume(channel: Channel) -> Result<(), lapin::Error> {
+    pub async fn consume(context: &Arc<Context>, channel: Channel) -> Result<(), lapin::Error> {
         let settings = config::rabbit_mq_settings();
 
         let mut consumer = channel
@@ -44,7 +61,15 @@ impl RabbitMQ {
         while let Some(delivery) = consumer.next().await {
             match delivery {
                 Ok(delivery) => {
-                    println!("Received: {:?}", String::from_utf8_lossy(&delivery.data));
+                    let message: Result<Message, serde_json::Error> =
+                        serde_json::from_slice(&delivery.data);
+
+                    match message {
+                        Ok(data) => {
+                          let _ = Self::handle_message(&context, data);
+                        }
+                        Err(err) => eprintln!("Error parsing message: {:?}", err),
+                    }
 
                     channel
                         .basic_ack(delivery.delivery_tag, Default::default())
@@ -55,5 +80,27 @@ impl RabbitMQ {
         }
 
         Ok(())
+    }
+
+    fn handle_message(context: &Arc<Context>, message: Message) -> Result<bool, String> {
+        let mut connection = context
+            .redis_pool
+            .get()
+            .map_err(|error| format!("Failed to get Redis connection: {}", error))?;
+
+        match message.message_type {
+            MessageType::Create => {
+                let data = serde_json::from_slice(&message.content.as_bytes())
+                    .map_err(|_| "Can't parse create profile args")?;
+
+                profile::service::create(&mut connection, data).map_err(|e| e.to_string())
+            }
+            MessageType::Kill => {
+                let data = serde_json::from_slice(&message.content.as_bytes())
+                    .map_err(|_| "Can't parse kill profile args")?;
+
+                profile::service::kill(&mut connection, data).map_err(|e| e.to_string())
+            }
+        }
     }
 }

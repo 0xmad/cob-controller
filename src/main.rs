@@ -23,20 +23,21 @@ async fn main() -> std::io::Result<()> {
         .await
         .expect("Can't start RabbitMQ consumer");
 
+    let redis_pool = Redis::get_pool();
+    let server_context = Arc::new(Context { redis_pool });
+    let mq_context = Arc::new(server_context.clone());
+
     actix_rt::spawn(async move {
-        if let Err(e) = RabbitMQ::consume(channel).await {
+        if let Err(e) = RabbitMQ::consume(&mq_context.clone(), channel).await {
             eprintln!("Error in consumer: {:?}", e);
         }
     });
-
-    let redis_pool = Redis::get_pool();
-    let context = Arc::new(Context { redis_pool });
 
     println!("Service is running");
 
     HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(context.clone()))
+            .app_data(web::Data::new(server_context.clone()))
             .service(health_check)
             .service(profile::controller::create)
             .service(profile::controller::kill)

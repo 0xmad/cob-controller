@@ -25,6 +25,7 @@ pub fn create(connection: &mut redis::Connection, data: CreateArgs) -> Result<bo
             "--user-data-dir={}/{}",
             user_profiles_folder, data.address
         ))
+        .arg("--remote-debugging-port=9222")
         .spawn()
         .map(|output| {
             connection.set::<String, String, String>(data.address, output.id().to_string())
